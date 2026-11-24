@@ -1,0 +1,15 @@
+CrowbarZD is licensed under the Creative Commons Attribution-ShareAlike 3.0
+Unported License. To view a copy of this license, visit
+http://creativecommons.org/licenses/by-sa/3.0/deed.en_US
+
+CrowbarZD is a modified work based on Crowbar.
+
+  Title of original work: Crowbar
+  Original author (credit): ZeqMacaw
+  Original work: https://steamcommunity.com/groups/CrowbarTool
+
+The model readers and the QC/SMD writers in src/core are a C++ port of parts
+of Crowbar's Visual Basic source. CrowbarZD is not the original Crowbar and
+is not endorsed by its author.
+
+  Modified by: CoreyZD
