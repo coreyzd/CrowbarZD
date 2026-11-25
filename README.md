@@ -59,11 +59,12 @@ MDL versions 44 to 48 (Source 2006 / 2007 / SDK 2013 era; GoldenEye: Source is 4
 
 | Written | Not written yet (reported as a warning when the model has it) |
 | --- | --- |
-| Reference meshes, body groups, LOD meshes and `$lod` | Animations and IK rules stored in a separate `.ani` block file |
-| Skeleton and `$definebone` | Axis-interpolated and aim-at procedural bones |
-| Animations and `$sequence` / `$animation`: fps, loop, activity, events, blends, weight lists, nodes, root motion | Flex rules that use DMX-only operations (written as approximations or comments) |
-| Sequence layers (`addlayer`, `blendlayer`) | Eyes or flexes on more than one body group |
-| IK: `$ikchain`, `$ikautoplaylock`, `iklock` and `ikrule` options | Bone controllers, LOD material replacement |
+| Reference meshes, body groups, LOD meshes and `$lod` | Axis-interpolated and aim-at procedural bones |
+| Skeleton and `$definebone` | Flex rules that use DMX-only operations (written as approximations or comments) |
+| Animations and `$sequence` / `$animation`: fps, loop, activity, events, blends, weight lists, nodes, root motion | Eyes or flexes on more than one body group |
+| Animations and IK rules kept in an animation block file (`<model>.ani`, read from next to the MDL) | Bone controllers, LOD material replacement |
+| Sequence layers (`addlayer`, `blendlayer`) | `$animblocksize` (a recompile puts the animations back inside the MDL) |
+| IK: `$ikchain`, `$ikautoplaylock`, `iklock` and `ikrule` options | |
 | `$jigglebone` | |
 | Procedural helper bones: a VRD file and `$proceduralbones` | |
 | Faces, in a `$model` block: `eyeball`, `eyelid`, `mouth`, flex shapes in a VTA file (`flex`, `flexpair`), `flexcontroller`, `localvar` and flex rules | |

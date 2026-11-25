@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstring>
 #include <fstream>
+#include <optional>
 #include <iterator>
 #include <stdexcept>
 
@@ -141,7 +142,14 @@ std::vector<MdlAnimTrack> readAnimTracks(const Bytes& b, size_t off, int boneCou
   return tracks;
 }
 
-void readAnimDescs(const Bytes& b, MdlFile& m, size_t table, int count) {
+// `ani` is the animation block file (.ani) when the model has one and it was found; `blocks`
+// holds where each block starts in it (block 0 is the MDL itself).
+void readAnimDescs(const Bytes& b, MdlFile& m, size_t table, int count, const Bytes* ani, const std::vector<size_t>& blocks) {
+  auto blockStart = [&](int block, size_t& start) {
+    if (!ani || block <= 0 || block >= static_cast<int>(blocks.size())) return false;
+    start = blocks[static_cast<size_t>(block)];
+    return true;
+  };
   constexpr size_t kSize = 100;
   b.need(table, count, kSize, "animation");
   const int boneCount = static_cast<int>(m.bones.size());
@@ -175,29 +183,35 @@ void readAnimDescs(const Bytes& b, MdlFile& m, size_t table, int count) {
 
     // IK rules (mstudioikrule_t, 152 bytes). With an animation block they live in the .ani file instead.
     d.ikRuleCount = b.i32(a + 60);
-    if (const int ruleIndex = b.i32(a + 64); d.ikRuleCount > 0 && d.ikRuleCount < 4096 && ruleIndex != 0 && b.has(a + ruleIndex, static_cast<size_t>(d.ikRuleCount) * 152)) {
+    auto readRules = [&](const Bytes& src, size_t at) {
+      if (d.ikRuleCount <= 0 || d.ikRuleCount >= 4096 || !src.has(at, static_cast<size_t>(d.ikRuleCount) * 152)) return;
       for (int k = 0; k < d.ikRuleCount; ++k) {
-        const size_t r = a + ruleIndex + static_cast<size_t>(k) * 152;
+        const size_t r = at + static_cast<size_t>(k) * 152;
         MdlIkRule rule;
-        rule.type = b.i32(r + 4);
-        rule.chain = b.i32(r + 8);
-        rule.bone = b.i32(r + 12);
-        rule.slot = b.i32(r + 16);
-        rule.height = b.f32(r + 20);
-        rule.radius = b.f32(r + 24);
-        rule.floor = b.f32(r + 28);
-        rule.pos = b.vec3(r + 32);
-        rule.q = {b.f32(r + 44), b.f32(r + 48), b.f32(r + 52), b.f32(r + 56)};
-        rule.start = b.f32(r + 76);
-        rule.peak = b.f32(r + 80);
-        rule.tail = b.f32(r + 84);
-        rule.end = b.f32(r + 88);
-        rule.contact = b.f32(r + 96);
-        rule.drop = b.f32(r + 100);
-        rule.top = b.f32(r + 104);
-        rule.attachment = b.strAt(r, r + 120);
+        rule.type = src.i32(r + 4);
+        rule.chain = src.i32(r + 8);
+        rule.bone = src.i32(r + 12);
+        rule.slot = src.i32(r + 16);
+        rule.height = src.f32(r + 20);
+        rule.radius = src.f32(r + 24);
+        rule.floor = src.f32(r + 28);
+        rule.pos = src.vec3(r + 32);
+        rule.q = {src.f32(r + 44), src.f32(r + 48), src.f32(r + 52), src.f32(r + 56)};
+        rule.start = src.f32(r + 76);
+        rule.peak = src.f32(r + 80);
+        rule.tail = src.f32(r + 84);
+        rule.end = src.f32(r + 88);
+        rule.contact = src.f32(r + 96);
+        rule.drop = src.f32(r + 100);
+        rule.top = src.f32(r + 104);
+        rule.attachment = src.strAt(r, r + 120);
         d.ikRules.push_back(std::move(rule));
       }
+    };
+    if (const int ruleIndex = b.i32(a + 64); ruleIndex != 0) {
+      readRules(b, a + ruleIndex);
+    } else if (size_t start = 0; b.i32(a + 68) != 0 && blockStart(d.animBlock, start)) {
+      readRules(*ani, start + static_cast<size_t>(b.i32(a + 68)));  // animblockikruleindex
     }
 
     if (d.flags & MdlAnimDesc::FrameAnim) {
@@ -209,12 +223,20 @@ void readAnimDescs(const Bytes& b, MdlFile& m, size_t table, int count) {
       d.loaded = true;
       for (int s = 0; s < sectionCount; ++s) {
         const int block = b.i32(a + sectionIndex + s * 8), offset = b.i32(a + sectionIndex + s * 8 + 4);
-        if (block != 0) { d.loaded = false; d.sections.emplace_back(); continue; }
         const int frames = s < sectionCount - 2 ? d.sectionFrames : d.frameCount - (sectionCount - 2) * d.sectionFrames;
+        if (block != 0) {
+          size_t start = 0;
+          if (blockStart(block, start)) d.sections.push_back(readAnimTracks(*ani, start + static_cast<size_t>(offset), boneCount, std::max(frames, 1)));
+          else { d.loaded = false; d.sections.emplace_back(); }
+          continue;
+        }
         d.sections.push_back(readAnimTracks(b, a + offset + (animIndex - firstOffset), boneCount, std::max(frames, 1)));
       }
     } else if (d.animBlock == 0) {
       d.sections.push_back(readAnimTracks(b, a + animIndex, boneCount, d.frameCount));
+      d.loaded = true;
+    } else if (size_t start = 0; blockStart(d.animBlock, start)) {
+      d.sections.push_back(readAnimTracks(*ani, start + static_cast<size_t>(animIndex), boneCount, d.frameCount));
       d.loaded = true;
     }
     if (d.sections.empty()) d.sections.emplace_back();
@@ -590,7 +612,41 @@ MdlFile readMdl(const std::filesystem::path& file) {
   m.constDirectionalLightDot = b.u8(376);
   if (const int h2 = b.i32(400); h2 != 0 && b.has(h2, 12)) m.illumAttachment = b.i32(h2 + 8);
 
-  readAnimDescs(b, m, b.i32(184), b.i32(180));
+  // Animation blocks: big models keep animation data in a separate <name>.ani file. The MDL lists
+  // where each block starts in it (mstudioanimblock_t: start, end).
+  std::optional<Bytes> ani;
+  std::vector<size_t> blocks;
+  if (m.animBlockCount > 1 && m.animBlockCount < 65536 && b.has(b.i32(356), static_cast<size_t>(m.animBlockCount) * 8)) {
+    for (int i = 0; i < m.animBlockCount; ++i) blocks.push_back(static_cast<size_t>(b.i32(static_cast<size_t>(b.i32(356)) + static_cast<size_t>(i) * 8)));
+    // Look next to the MDL, in any letter case.
+    std::string want = file.stem().string() + ".ani";
+    std::transform(want.begin(), want.end(), want.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    std::error_code ec;
+    const std::filesystem::path dir = file.parent_path().empty() ? std::filesystem::path(".") : file.parent_path();
+    for (std::filesystem::directory_iterator it(dir, ec), end; !ec && it != end; it.increment(ec)) {
+      std::string name = it->path().filename().string();
+      std::transform(name.begin(), name.end(), name.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+      if (name != want) continue;
+      ani.emplace(it->path());
+      m.aniFile = it->path().filename().string();
+      if (ani->size() < 12 || ani->fixedStr(0, 4) != "IDAG") {
+        m.aniProblem = m.aniFile + " is not an animation block file";
+        ani.reset();
+      } else {
+        // The compiler leaves the .ani checksum at zero, so the only check is that every block
+        // the MDL lists actually fits in the file.
+        for (int i = 1; i < m.animBlockCount; ++i)
+          if (static_cast<size_t>(b.i32(static_cast<size_t>(b.i32(356)) + static_cast<size_t>(i) * 8 + 4)) > ani->size()) {
+            m.aniProblem = m.aniFile + " is smaller than the MDL expects; it probably belongs to another version of the model";
+            ani.reset();
+            break;
+          }
+      }
+      break;
+    }
+    if (m.aniFile.empty()) m.aniProblem = "the animation block file (" + want + ") was not found next to the MDL";
+  }
+  readAnimDescs(b, m, b.i32(184), b.i32(180), ani ? &*ani : nullptr, blocks);
   readSequences(b, m, b.i32(192), b.i32(188));
   return m;
 }

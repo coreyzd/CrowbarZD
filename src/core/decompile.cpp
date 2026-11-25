@@ -1034,6 +1034,7 @@ DecompileResult decompile(const fs::path& mdlPath, const fs::path& outDir, const
 
   say("Reading " + mdlPath.filename().string());
   const MdlFile m = readMdl(mdlPath);
+  if (!m.aniFile.empty()) say("  animation blocks read from " + m.aniFile);
   say("  MDL version " + std::to_string(m.version) + ", " + std::to_string(m.bones.size()) + " bones, " + std::to_string(m.sequences.size()) + " sequences, " +
       std::to_string(m.textures.size()) + " materials");
 
@@ -1137,8 +1138,7 @@ DecompileResult decompile(const fs::path& mdlPath, const fs::path& outDir, const
     } else {
       if (opt.animations && !blockWarned) {
         blockWarned = true;
-        warn("some animations are stored in an animation block file (" + (m.animBlockName.empty() ? std::string(".ani") : m.animBlockName) +
-             "), which is not read yet; they were written as a single bind-pose frame");
+        warn("some animations are stored in an animation block file that could not be read; they were written as a single bind-pose frame");
       }
       auto o = openOut(file);
       writeSmdHeader(o, m);
@@ -1207,8 +1207,9 @@ DecompileResult decompile(const fs::path& mdlPath, const fs::path& outDir, const
     if (!used.empty() && used.size() < m.textures.size())
       warn(std::to_string(m.textures.size() - used.size()) + " material(s) listed in the model are not used by any mesh; the compiler drops them on a recompile");
   }
+  if (!m.aniProblem.empty()) warn(m.aniProblem);
   for (const MdlAnimDesc& a : m.anims)
-    if (a.ikRuleCount > static_cast<int>(a.ikRules.size())) { warn("some IK rules are stored in an animation block file, which is not read yet; those ikrule options were left out"); break; }
+    if (a.ikRuleCount > static_cast<int>(a.ikRules.size())) { warn("some IK rules are stored in an animation block file that could not be read; those ikrule options were left out"); break; }
   for (const MdlBone& b : m.bones)
     if (b.procType != 0 && !b.jiggle && !b.quatInterp) { warn("bone \"" + b.name + "\" is an axis-interpolated or aim-at procedural bone; those kinds are not decompiled yet"); break; }
   if (opt.proceduralBones && writeVrd(outDir / (base + ".vrd"), m)) {

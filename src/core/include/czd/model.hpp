@@ -288,6 +288,8 @@ struct MdlFile {
   std::vector<MdlMouth> mouths;
   int animBlockCount = 0;
   std::string animBlockName;
+  std::string aniFile;     // name of the .ani file that was read, if any
+  std::string aniProblem;  // why animation blocks could not be (fully) trusted, for a warning
 };
 
 // ---- VVD / VTX ---------------------------------------------------------------
